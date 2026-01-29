@@ -75,7 +75,7 @@ Connect to the WebSocket server at: `ws://localhost:8080/ws`
 ```
 
 ```json
-{"action":"addAlbum","data":{"title":"New Album","artist":"Artist Name","price":29.99}}
+{"action":"addAlbum","data":{"title":"New Album","artist":"Artist Name","price":29.99,"stock":10}}
 ```
 
 **USER OPERATIONS:**
@@ -144,7 +144,8 @@ Connect to the WebSocket server at: `ws://localhost:8080/ws`
       "ID": 1,
       "Title": "Album Title",
       "Artist": "Artist Name",
-      "Price": 19.99
+      "Price": 19.99,
+      "Stock": 15
     }
   ]
 }
@@ -170,7 +171,8 @@ Connect to the WebSocket server at: `ws://localhost:8080/ws`
       "ID": 2,
       "Title": "Hello",
       "Artist": "Adele",
-      "Price": 24.99
+      "Price": 24.99,
+      "Stock": 8
     }
   ]
 }
@@ -195,7 +197,8 @@ Connect to the WebSocket server at: `ws://localhost:8080/ws`
     "ID": 1,
     "Title": "Album Title",
     "Artist": "Artist Name",
-    "Price": 19.99
+    "Price": 19.99,
+    "Stock": 15
   }
 }
 ```
@@ -206,10 +209,10 @@ Connect to the WebSocket server at: `ws://localhost:8080/ws`
 
 **Message:**
 ```json
-{"action":"addAlbum","data":{"title":"New Album","artist":"Artist Name","price":29.99}}
+{"action":"addAlbum","data":{"title":"New Album","artist":"Artist Name","price":29.99,"stock":10}}
 ```
 
-**Description:** Adds a new album to the database. Provide the album title, artist name, and price.
+**Description:** Adds a new album to the database. Provide the album title, artist name, price, and initial stock quantity.
 
 **Response Example:**
 ```json
@@ -372,7 +375,13 @@ Returns the ID of the newly created user.
 {"action":"addPurchase","data":{"user_id":1,"album_id":2,"quantity":3}}
 ```
 
-**Description:** Records a new purchase. Provide the user ID, album ID, and quantity purchased. The user and album must exist in the database.
+**Description:** Records a new purchase. Provide the user ID, album ID, and quantity purchased. The user and album must exist in the database. This operation is transaction-protected and will:
+1. Check the current stock level of the album
+2. Validate that sufficient stock is available
+3. Create the purchase record if stock is sufficient
+4. Automatically decrement the album's stock by the purchased quantity
+
+The purchase will fail if the album does not have sufficient stock available.
 
 **Response Example:**
 ```json
@@ -570,15 +579,42 @@ If an action fails, you'll receive:
 
 ## Database Schema
 
-Before using the user and purchase APIs, create the following tables in your MySQL database:
+The project uses three main tables in the `recordings` MySQL database:
 
+### 1. Album Table
+```sql
+CREATE TABLE album (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  artist VARCHAR(255) NOT NULL,
+  price DECIMAL(10, 2) NOT NULL,
+  stock INT NOT NULL DEFAULT 0
+);
+```
+
+**Fields:**
+- `id` - Auto-incrementing primary key
+- `title` - Album title (required)
+- `artist` - Artist name (required)
+- `price` - Album price (decimal format)
+- `stock` - Quantity available (used for purchase validation)
+
+### 2. User Table
 ```sql
 CREATE TABLE user (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(255) UNIQUE NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL
 );
+```
 
+**Fields:**
+- `id` - Auto-incrementing primary key
+- `username` - Unique username (required)
+- `email` - Unique email address (required)
+
+### 3. Purchase Table
+```sql
 CREATE TABLE purchase (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
@@ -589,6 +625,14 @@ CREATE TABLE purchase (
 );
 ```
 
-**Important:** These tables reference the existing `album` table and `user` table. The `purchase` table uses foreign keys to maintain data integrity:
-- `user_id` references the `user` table
-- `album_id` references the `album` table
+**Fields:**
+- `id` - Auto-incrementing primary key
+- `user_id` - References `user` table (required)
+- `album_id` - References `album` table (required)
+- `quantity` - Number of units purchased (default: 1)
+
+**Important Features:**
+- The `purchase` table uses foreign keys to maintain data integrity
+- When a purchase is created, the album's stock is automatically decremented
+- Purchases are protected by transactions to ensure data consistency
+- Stock validation occurs before purchase completion to prevent overselling
