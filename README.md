@@ -636,3 +636,164 @@ CREATE TABLE purchase (
 - When a purchase is created, the album's stock is automatically decremented
 - Purchases are protected by transactions to ensure data consistency
 - Stock validation occurs before purchase completion to prevent overselling
+
+## Stored Procedures
+
+The application uses stored procedures to handle data operations at the database level, improving performance and encapsulating business logic.
+
+### 1. sp_get_all_purchases
+```sql
+CALL sp_get_all_purchases()
+```
+
+**Description:** Retrieves all purchases from the database.
+
+**Returns:** Result set with columns: `id, user_id, album_id, quantity`
+
+### 2. sp_get_purchases_by_user_id
+```sql
+CALL sp_get_purchases_by_user_id(user_id)
+```
+
+**Parameters:**
+- `user_id` (INT) - The ID of the user
+
+**Description:** Retrieves all purchases made by a specific user.
+
+**Returns:** Result set with columns: `id, user_id, album_id, quantity`
+
+### 3. sp_add_purchase
+```sql
+CALL sp_add_purchase(user_id, album_id, quantity)
+```
+
+**Parameters:**
+- `user_id` (INT) - The ID of the user making the purchase
+- `album_id` (INT) - The ID of the album being purchased
+- `quantity` (INT) - The quantity being purchased
+
+**Description:** Adds a new purchase to the database with the following logic:
+1. Validates that the album exists
+2. Checks if sufficient stock is available
+3. Inserts the purchase record
+4. Decrements the album's stock by the purchased quantity
+5. Commits the transaction if successful, or rolls back on error
+
+**Returns:** Result set with the new purchase ID
+
+**Error Handling:**
+- Returns error if album not found
+- Returns error if insufficient stock available
+
+### 4. sp_get_user_purchase_summary
+```sql
+CALL sp_get_user_purchase_summary(user_id)
+```
+
+**Parameters:**
+- `user_id` (INT) - The ID of the user
+
+**Description:** Retrieves a comprehensive summary of a user's purchase history. Returns two result sets:
+1. First result set: User information (`id, username, email`)
+2. Second result set: Purchase details with album information (`p.id, p.album_id, a.title, a.artist, a.price, p.quantity`)
+
+**Returns:** Two result sets with user info and purchase details
+
+### 5. sp_get_all_users_purchase_summary
+```sql
+CALL sp_get_all_users_purchase_summary()
+```
+
+**Description:** Retrieves purchase summaries for all users in a single denormalized result set. This is useful for reporting and analytics.
+
+**Returns:** Result set with columns: `user_id, username, email, purchase_id, album_id, album_title, artist, price, quantity`
+
+**Note:** Users with no purchases will have NULL values for purchase-related columns.
+
+### Creating the Stored Procedures
+
+To create all stored procedures in your MySQL database, execute the following SQL:
+
+```sql
+-- Create stored procedure to get all purchases
+DELIMITER $$
+CREATE PROCEDURE sp_get_all_purchases()
+BEGIN
+    SELECT id, user_id, album_id, quantity FROM purchase;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to get purchases by user ID
+DELIMITER $$
+CREATE PROCEDURE sp_get_purchases_by_user_id(IN p_user_id INT)
+BEGIN
+    SELECT id, user_id, album_id, quantity FROM purchase WHERE user_id = p_user_id;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to add a purchase
+DELIMITER $$
+CREATE PROCEDURE sp_add_purchase(IN p_user_id INT, IN p_album_id INT, IN p_quantity INT)
+BEGIN
+    DECLARE v_stock INT;
+    DECLARE v_purchase_id INT;
+
+    START TRANSACTION;
+
+    -- Check current stock
+    SELECT stock INTO v_stock FROM album WHERE id = p_album_id FOR UPDATE;
+    
+    IF v_stock IS NULL THEN
+        ROLLBACK;
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Album not found';
+    END IF;
+
+    IF v_stock < p_quantity THEN
+        ROLLBACK;
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Insufficient stock for purchase';
+    END IF;
+
+    -- Insert purchase
+    INSERT INTO purchase (user_id, album_id, quantity) VALUES (p_user_id, p_album_id, p_quantity);
+    SET v_purchase_id = LAST_INSERT_ID();
+
+    -- Decrement stock
+    UPDATE album SET stock = stock - p_quantity WHERE id = p_album_id;
+
+    COMMIT;
+    
+    -- Return the purchase ID
+    SELECT v_purchase_id;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to get user purchase summary
+DELIMITER $$
+CREATE PROCEDURE sp_get_user_purchase_summary(IN p_user_id INT)
+BEGIN
+    -- Get user info
+    SELECT id, username, email FROM user WHERE id = p_user_id;
+    
+    -- Get purchase details with album info
+    SELECT p.id, p.album_id, a.title, a.artist, a.price, p.quantity
+    FROM purchase p
+    JOIN album a ON p.album_id = a.id
+    WHERE p.user_id = p_user_id
+    ORDER BY p.id;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to get all users' purchase summaries
+DELIMITER $$
+CREATE PROCEDURE sp_get_all_users_purchase_summary()
+BEGIN
+    SELECT u.id, u.username, u.email, p.id, p.album_id, a.title, a.artist, a.price, p.quantity
+    FROM user u
+    LEFT JOIN purchase p ON u.id = p.user_id
+    LEFT JOIN album a ON p.album_id = a.id
+    ORDER BY u.id, p.id;
+END $$
+DELIMITER ;
+```
+
+You can execute these SQL commands in TablePlus or any MySQL client.

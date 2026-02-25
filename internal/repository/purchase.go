@@ -10,13 +10,13 @@ import (
 
 // Purchase database operations
 
-// GetAllPurchases queries for all purchases in the database
+// GetAllPurchases calls stored procedure to get all purchases in the database
 func GetAllPurchases(db *sql.DB) ([]models.Purchase, error) {
 	var purchases []models.Purchase
 
-	rows, err := db.Query("SELECT id, user_id, album_id, quantity FROM purchase")
+	rows, err := db.Query("CALL sp_get_all_purchases()")
 	if err != nil {
-		logger.Log.Errorw("Failed to query purchases", "error", err)
+		logger.Log.Errorw("Failed to call stored procedure sp_get_all_purchases", "error", err)
 		return nil, fmt.Errorf("getAllPurchases: %v", err)
 	}
 	defer rows.Close()
@@ -38,13 +38,13 @@ func GetAllPurchases(db *sql.DB) ([]models.Purchase, error) {
 	return purchases, nil
 }
 
-// GetPurchasesByUserID queries for purchases by a specific user
+// GetPurchasesByUserID calls stored procedure to get purchases by a specific user
 func GetPurchasesByUserID(db *sql.DB, userID int64) ([]models.Purchase, error) {
 	var purchases []models.Purchase
 
-	rows, err := db.Query("SELECT id, user_id, album_id, quantity FROM purchase WHERE user_id = ?", userID)
+	rows, err := db.Query("CALL sp_get_purchases_by_user_id(?)", userID)
 	if err != nil {
-		logger.Log.Errorw("Failed to query purchases by user", "user_id", userID, "error", err)
+		logger.Log.Errorw("Failed to call stored procedure sp_get_purchases_by_user_id", "user_id", userID, "error", err)
 		return nil, fmt.Errorf("getPurchasesByUserID %d: %v", userID, err)
 	}
 	defer rows.Close()
@@ -66,103 +66,55 @@ func GetPurchasesByUserID(db *sql.DB, userID int64) ([]models.Purchase, error) {
 	return purchases, nil
 }
 
-// AddPurchase adds a purchase to the database,
+// AddPurchase calls stored procedure to add a purchase to the database,
 // returning the purchase ID of the new entry
 func AddPurchase(db *sql.DB, p models.Purchase) (int64, error) {
-	logger.Log.Debugw("Starting purchase transaction", "user_id", p.UserID, "album_id", p.AlbumID, "quantity", p.Quantity)
+	logger.Log.Debugw("Starting purchase through stored procedure", "user_id", p.UserID, "album_id", p.AlbumID, "quantity", p.Quantity)
 
-	// Use a transaction to safely check and decrement stock
-	tx, err := db.Begin()
+	var purchaseID int64
+	err := db.QueryRow("CALL sp_add_purchase(?, ?, ?)", p.UserID, p.AlbumID, p.Quantity).Scan(&purchaseID)
 	if err != nil {
-		logger.Log.Errorw("Failed to begin transaction", "error", err, "user_id", p.UserID, "album_id", p.AlbumID)
-		return 0, fmt.Errorf("addPurchase begin tx: %v", err)
-	}
-	defer func() {
-		if err != nil {
-			logger.Log.Warnw("Rolling back transaction", "user_id", p.UserID, "album_id", p.AlbumID, "error", err)
-			tx.Rollback()
-		}
-	}()
-
-	// Check current stock
-	var stock int
-	row := tx.QueryRow("SELECT stock FROM album WHERE id = ?", p.AlbumID)
-	if err := row.Scan(&stock); err != nil {
-		logger.Log.Warnw("Album not found", "album_id", p.AlbumID, "error", err)
-		return 0, fmt.Errorf("addPurchase: album lookup: %v", err)
+		logger.Log.Errorw("Failed to call stored procedure sp_add_purchase", "error", err, "user_id", p.UserID, "album_id", p.AlbumID)
+		return 0, fmt.Errorf("addPurchase: %v", err)
 	}
 
-	logger.Log.Debugw("Checked stock", "album_id", p.AlbumID, "current_stock", stock, "requested_quantity", p.Quantity)
+	logger.Log.Infow("Purchase added successfully through stored procedure", "purchase_id", purchaseID, "user_id", p.UserID, "album_id", p.AlbumID, "quantity", p.Quantity)
 
-	if stock < p.Quantity {
-		logger.Log.Warnw("Insufficient stock", "album_id", p.AlbumID, "available_stock", stock, "requested_quantity", p.Quantity)
-		tx.Rollback()
-		return 0, fmt.Errorf("addPurchase: album %d out of stock or insufficient stock (have=%d, want=%d)", p.AlbumID, stock, p.Quantity)
-	}
-
-	// Insert purchase
-	result, err := tx.Exec("INSERT INTO purchase (user_id, album_id, quantity) VALUES (?, ?, ?)", p.UserID, p.AlbumID, p.Quantity)
-	if err != nil {
-		logger.Log.Errorw("Failed to insert purchase", "error", err, "user_id", p.UserID, "album_id", p.AlbumID)
-		return 0, fmt.Errorf("addPurchase: insert: %v", err)
-	}
-
-	// Decrement stock
-	_, err = tx.Exec("UPDATE album SET stock = stock - ? WHERE id = ?", p.Quantity, p.AlbumID)
-	if err != nil {
-		logger.Log.Errorw("Failed to update stock", "error", err, "album_id", p.AlbumID, "decrement", p.Quantity)
-		return 0, fmt.Errorf("addPurchase: update stock: %v", err)
-	}
-
-	logger.Log.Debugw("Stock decremented", "album_id", p.AlbumID, "old_stock", stock, "new_stock", stock-p.Quantity)
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		logger.Log.Errorw("Failed to get purchase ID", "error", err)
-		return 0, fmt.Errorf("addPurchase: get id: %v", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		logger.Log.Errorw("Failed to commit transaction", "error", err, "purchase_id", id)
-		return 0, fmt.Errorf("addPurchase: commit: %v", err)
-	}
-
-	logger.Log.Infow("Purchase committed successfully", "purchase_id", id, "user_id", p.UserID, "album_id", p.AlbumID, "quantity", p.Quantity)
-
-	return id, nil
+	return purchaseID, nil
 }
 
-// GetUserPurchaseSummary gets a user's purchases with album details and calculates total cost
+// GetUserPurchaseSummary calls stored procedure to get a user's purchases with album details and calculates total cost
 func GetUserPurchaseSummary(db *sql.DB, userID int64) (models.UserPurchaseSummary, error) {
 	summary := models.UserPurchaseSummary{}
 
-	// Get user info
-	userRow := db.QueryRow("SELECT id, username, email FROM user WHERE id = ?", userID)
-	if err := userRow.Scan(&summary.UserID, &summary.Username, &summary.Email); err != nil {
-		logger.Log.Errorw("Failed to get user for purchase summary", "user_id", userID, "error", err)
-		return summary, fmt.Errorf("getUserPurchaseSummary %d: %v", userID, err)
-	}
-
-	// Get purchases with album details
-	rows, err := db.Query(`
-		SELECT p.id, p.album_id, a.title, a.artist, a.price, p.quantity
-		FROM purchase p
-		JOIN album a ON p.album_id = a.id
-		WHERE p.user_id = ?
-		ORDER BY p.id
-	`, userID)
+	// Call stored procedure to get user info and purchases
+	rows, err := db.Query("CALL sp_get_user_purchase_summary(?)", userID)
 	if err != nil {
-		logger.Log.Errorw("Failed to query user purchases for summary", "user_id", userID, "error", err)
+		logger.Log.Errorw("Failed to call stored procedure sp_get_user_purchase_summary", "user_id", userID, "error", err)
 		return summary, fmt.Errorf("getUserPurchaseSummary %d: %v", userID, err)
 	}
 	defer rows.Close()
+
+	// First row contains user info
+	if rows.Next() {
+		if err := rows.Scan(&summary.UserID, &summary.Username, &summary.Email); err != nil {
+			logger.Log.Errorw("Failed to scan user info from stored procedure", "user_id", userID, "error", err)
+			return summary, fmt.Errorf("getUserPurchaseSummary %d: %v", userID, err)
+		}
+	}
+
+	// Move to next result set with purchase details
+	if !rows.NextResultSet() {
+		logger.Log.Infow("No purchase details found for user", "user_id", userID)
+		return summary, nil
+	}
 
 	totalCost := float32(0)
 	for rows.Next() {
 		var detail models.PurchaseDetail
 		var price float64
 		if err := rows.Scan(&detail.ID, &detail.AlbumID, &detail.AlbumTitle, &detail.Artist, &price, &detail.Quantity); err != nil {
-			logger.Log.Errorw("Failed to scan purchase detail", "user_id", userID, "error", err)
+			logger.Log.Errorw("Failed to scan purchase detail from stored procedure", "user_id", userID, "error", err)
 			return summary, fmt.Errorf("getUserPurchaseSummary %d: %v", userID, err)
 		}
 		detail.Price = float32(price)
@@ -175,35 +127,76 @@ func GetUserPurchaseSummary(db *sql.DB, userID int64) (models.UserPurchaseSummar
 	return summary, nil
 }
 
-// GetAllUsersPurchaseSummary gets purchase summaries for all users
+// GetAllUsersPurchaseSummary calls stored procedure to get purchase summaries for all users
 func GetAllUsersPurchaseSummary(db *sql.DB) ([]models.UserPurchaseSummary, error) {
 	var summaries []models.UserPurchaseSummary
 
-	// Get all users
-	userRows, err := db.Query("SELECT id, username, email FROM user ORDER BY id")
+	// Call stored procedure to get all users purchase summaries
+	rows, err := db.Query("CALL sp_get_all_users_purchase_summary()")
 	if err != nil {
-		logger.Log.Errorw("Failed to query all users for purchase summary", "error", err)
+		logger.Log.Errorw("Failed to call stored procedure sp_get_all_users_purchase_summary", "error", err)
 		return nil, fmt.Errorf("getAllUsersPurchaseSummary: %v", err)
 	}
-	defer userRows.Close()
+	defer rows.Close()
 
-	for userRows.Next() {
+	currentUserID := int64(-1)
+	var currentSummary models.UserPurchaseSummary
+	totalCost := float32(0)
+
+	for rows.Next() {
 		var userID int64
 		var username, email string
-		if err := userRows.Scan(&userID, &username, &email); err != nil {
-			logger.Log.Errorw("Failed to scan user for purchase summary", "error", err)
+		var purchaseID, albumID, quantity *int64
+		var albumTitle, artist *string
+		var price *float64
+
+		if err := rows.Scan(&userID, &username, &email, &purchaseID, &albumID, &albumTitle, &artist, &price, &quantity); err != nil {
+			logger.Log.Errorw("Failed to scan user purchase summary from stored procedure", "error", err)
 			return nil, fmt.Errorf("getAllUsersPurchaseSummary: %v", err)
 		}
 
-		summary, err := GetUserPurchaseSummary(db, userID)
-		if err != nil {
-			return nil, err
+		// If we moved to a new user, save the previous one
+		if userID != currentUserID {
+			if currentUserID != -1 {
+				currentSummary.TotalCost = totalCost
+				summaries = append(summaries, currentSummary)
+			}
+			currentUserID = userID
+			currentSummary = models.UserPurchaseSummary{
+				UserID:    userID,
+				Username:  username,
+				Email:     email,
+				Purchases: []models.PurchaseDetail{},
+			}
+			totalCost = 0
 		}
-		summaries = append(summaries, summary)
+
+		// Add purchase detail if present
+		if purchaseID != nil && albumID != nil {
+			detail := models.PurchaseDetail{
+				ID:         *purchaseID,
+				AlbumID:    *albumID,
+				AlbumTitle: *albumTitle,
+				Artist:     *artist,
+				Quantity:   int(*quantity),
+			}
+			if price != nil {
+				detail.Price = float32(*price)
+				detail.Subtotal = detail.Price * float32(detail.Quantity)
+				totalCost += detail.Subtotal
+			}
+			currentSummary.Purchases = append(currentSummary.Purchases, detail)
+		}
 	}
 
-	if err := userRows.Err(); err != nil {
-		logger.Log.Errorw("Error iterating all users for purchase summary", "error", err)
+	// Don't forget the last user
+	if currentUserID != -1 {
+		currentSummary.TotalCost = totalCost
+		summaries = append(summaries, currentSummary)
+	}
+
+	if err := rows.Err(); err != nil {
+		logger.Log.Errorw("Error iterating all users purchase summary from stored procedure", "error", err)
 		return nil, fmt.Errorf("getAllUsersPurchaseSummary: %v", err)
 	}
 
