@@ -1,22 +1,29 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"example/data-access/internal/logger"
 	"example/data-access/internal/models"
 )
 
+const dbTimeout = 5 * time.Second
+
 // Album database operations
 
-// GetAllAlbums queries for all albums in the database
+// GetAllAlbums calls stored procedure to get all albums in the database
 func GetAllAlbums(db *sql.DB) ([]models.Album, error) {
 	var albums []models.Album
 
-	rows, err := db.Query("SELECT id, title, artist, price, stock FROM album")
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "CALL sp_get_all_albums()")
 	if err != nil {
-		logger.Log.Errorw("Failed to query albums", "error", err)
+		logger.Log.Errorw("Failed to call stored procedure sp_get_all_albums", "error", err)
 		return nil, fmt.Errorf("getAllAlbums: %v", err)
 	}
 	defer rows.Close()
@@ -40,13 +47,16 @@ func GetAllAlbums(db *sql.DB) ([]models.Album, error) {
 	return albums, nil
 }
 
-// GetAlbumsByArtist queries for albums that have the specified artist name
+// GetAlbumsByArtist calls stored procedure to get albums that have the specified artist name
 func GetAlbumsByArtist(db *sql.DB, name string) ([]models.Album, error) {
 	var albums []models.Album
 
-	rows, err := db.Query("SELECT id, title, artist, price, stock FROM album WHERE artist = ?", name)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "CALL sp_get_albums_by_artist(?)", name)
 	if err != nil {
-		logger.Log.Errorw("Failed to query albums by artist", "artist", name, "error", err)
+		logger.Log.Errorw("Failed to call stored procedure sp_get_albums_by_artist", "artist", name, "error", err)
 		return nil, fmt.Errorf("getAlbumsByArtist %q: %v", name, err)
 	}
 	defer rows.Close()
@@ -70,11 +80,14 @@ func GetAlbumsByArtist(db *sql.DB, name string) ([]models.Album, error) {
 	return albums, nil
 }
 
-// GetAlbumByID queries for the album with the specified ID
+// GetAlbumByID calls stored procedure to get the album with the specified ID
 func GetAlbumByID(db *sql.DB, id int64) (models.Album, error) {
 	var alb models.Album
 
-	row := db.QueryRow("SELECT id, title, artist, price, stock FROM album WHERE id = ?", id)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	row := db.QueryRowContext(ctx, "CALL sp_get_album_by_id(?)", id)
 	var price float64
 	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &price, &alb.Stock); err != nil {
 		logger.Log.Errorw("Album not found", "album_id", id, "error", err)
@@ -85,23 +98,21 @@ func GetAlbumByID(db *sql.DB, id int64) (models.Album, error) {
 	return alb, nil
 }
 
-// AddAlbum adds the specified album to the database,
+// AddAlbum calls stored procedure to add an album to the database,
 // returning the album ID of the new entry
 func AddAlbum(db *sql.DB, alb models.Album) (int64, error) {
 	logger.Log.Infow("Adding new album", "title", alb.Title, "artist", alb.Artist, "price", alb.Price, "stock", alb.Stock)
 
-	result, err := db.Exec("INSERT INTO album (title, artist, price, stock) VALUES (?, ?, ?, ?)", alb.Title, alb.Artist, alb.Price, alb.Stock)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	var albumID int64
+	err := db.QueryRowContext(ctx, "CALL sp_add_album(?, ?, ?, ?)", alb.Title, alb.Artist, alb.Price, alb.Stock).Scan(&albumID)
 	if err != nil {
-		logger.Log.Errorw("Failed to insert album", "error", err, "title", alb.Title)
+		logger.Log.Errorw("Failed to call stored procedure sp_add_album", "error", err, "title", alb.Title)
 		return 0, fmt.Errorf("addAlbum: %v", err)
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		logger.Log.Errorw("Failed to get album ID", "error", err)
-		return 0, fmt.Errorf("addAlbum: %v", err)
-	}
-
-	logger.Log.Infow("Album created", "album_id", id, "title", alb.Title, "artist", alb.Artist)
-	return id, nil
+	logger.Log.Infow("Album created", "album_id", albumID, "title", alb.Title, "artist", alb.Artist)
+	return albumID, nil
 }

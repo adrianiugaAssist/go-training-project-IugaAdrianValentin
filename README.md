@@ -641,7 +641,95 @@ CREATE TABLE purchase (
 
 The application uses stored procedures to handle data operations at the database level, improving performance and encapsulating business logic.
 
-### 1. sp_get_all_purchases
+### User Procedures
+
+#### 1. sp_get_all_users
+```sql
+CALL sp_get_all_users()
+```
+
+**Description:** Retrieves all users from the database.
+
+**Returns:** Result set with columns: `id, username, email`
+
+#### 2. sp_get_user_by_id
+```sql
+CALL sp_get_user_by_id(user_id)
+```
+
+**Parameters:**
+- `user_id` (INT) - The ID of the user
+
+**Description:** Retrieves a specific user by ID.
+
+**Returns:** Result set with columns: `id, username, email`
+
+#### 3. sp_add_user
+```sql
+CALL sp_add_user(username, email)
+```
+
+**Parameters:**
+- `username` (VARCHAR(255)) - The username (must be unique)
+- `email` (VARCHAR(255)) - The email address (must be unique)
+
+**Description:** Adds a new user to the database.
+
+**Returns:** Result set with the new user ID
+
+### Album Procedures
+
+#### 4. sp_get_all_albums
+```sql
+CALL sp_get_all_albums()
+```
+
+**Description:** Retrieves all albums from the database.
+
+**Returns:** Result set with columns: `id, title, artist, price, stock`
+
+#### 5. sp_get_album_by_id
+```sql
+CALL sp_get_album_by_id(album_id)
+```
+
+**Parameters:**
+- `album_id` (INT) - The ID of the album
+
+**Description:** Retrieves a specific album by ID.
+
+**Returns:** Result set with columns: `id, title, artist, price, stock`
+
+#### 6. sp_get_albums_by_artist
+```sql
+CALL sp_get_albums_by_artist(artist_name)
+```
+
+**Parameters:**
+- `artist_name` (VARCHAR(255)) - The name of the artist
+
+**Description:** Retrieves all albums by a specific artist.
+
+**Returns:** Result set with columns: `id, title, artist, price, stock`
+
+#### 7. sp_add_album
+```sql
+CALL sp_add_album(title, artist, price, stock)
+```
+
+**Parameters:**
+- `title` (VARCHAR(255)) - The album title
+- `artist` (VARCHAR(255)) - The artist name
+- `price` (DECIMAL(10, 2)) - The album price
+- `stock` (INT) - The initial stock quantity
+
+**Description:** Adds a new album to the database.
+
+**Returns:** Result set with the new album ID
+
+### Purchase Procedures
+
+#### 8. sp_get_all_purchases
 ```sql
 CALL sp_get_all_purchases()
 ```
@@ -650,7 +738,7 @@ CALL sp_get_all_purchases()
 
 **Returns:** Result set with columns: `id, user_id, album_id, quantity`
 
-### 2. sp_get_purchases_by_user_id
+#### 9. sp_get_purchases_by_user_id
 ```sql
 CALL sp_get_purchases_by_user_id(user_id)
 ```
@@ -662,7 +750,7 @@ CALL sp_get_purchases_by_user_id(user_id)
 
 **Returns:** Result set with columns: `id, user_id, album_id, quantity`
 
-### 3. sp_add_purchase
+#### 10. sp_add_purchase
 ```sql
 CALL sp_add_purchase(user_id, album_id, quantity)
 ```
@@ -685,7 +773,7 @@ CALL sp_add_purchase(user_id, album_id, quantity)
 - Returns error if album not found
 - Returns error if insufficient stock available
 
-### 4. sp_get_user_purchase_summary
+#### 11. sp_get_user_purchase_summary
 ```sql
 CALL sp_get_user_purchase_summary(user_id)
 ```
@@ -699,7 +787,7 @@ CALL sp_get_user_purchase_summary(user_id)
 
 **Returns:** Two result sets with user info and purchase details
 
-### 5. sp_get_all_users_purchase_summary
+#### 12. sp_get_all_users_purchase_summary
 ```sql
 CALL sp_get_all_users_purchase_summary()
 ```
@@ -715,6 +803,64 @@ CALL sp_get_all_users_purchase_summary()
 To create all stored procedures in your MySQL database, execute the following SQL:
 
 ```sql
+-- Create stored procedure to get all users
+DELIMITER $$
+CREATE PROCEDURE sp_get_all_users()
+BEGIN
+    SELECT id, username, email FROM user;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to get user by ID
+DELIMITER $$
+CREATE PROCEDURE sp_get_user_by_id(IN p_user_id INT)
+BEGIN
+    SELECT id, username, email FROM user WHERE id = p_user_id;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to add a user
+DELIMITER $$
+CREATE PROCEDURE sp_add_user(IN p_username VARCHAR(255), IN p_email VARCHAR(255))
+BEGIN
+    INSERT INTO user (username, email) VALUES (p_username, p_email);
+    SELECT LAST_INSERT_ID();
+END $$
+DELIMITER ;
+
+-- Create stored procedure to get all albums
+DELIMITER $$
+CREATE PROCEDURE sp_get_all_albums()
+BEGIN
+    SELECT id, title, artist, price, stock FROM album;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to get album by ID
+DELIMITER $$
+CREATE PROCEDURE sp_get_album_by_id(IN p_album_id INT)
+BEGIN
+    SELECT id, title, artist, price, stock FROM album WHERE id = p_album_id;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to get albums by artist
+DELIMITER $$
+CREATE PROCEDURE sp_get_albums_by_artist(IN p_artist VARCHAR(255))
+BEGIN
+    SELECT id, title, artist, price, stock FROM album WHERE artist = p_artist;
+END $$
+DELIMITER ;
+
+-- Create stored procedure to add an album
+DELIMITER $$
+CREATE PROCEDURE sp_add_album(IN p_title VARCHAR(255), IN p_artist VARCHAR(255), IN p_price DECIMAL(10, 2), IN p_stock INT)
+BEGIN
+    INSERT INTO album (title, artist, price, stock) VALUES (p_title, p_artist, p_price, p_stock);
+    SELECT LAST_INSERT_ID();
+END $$
+DELIMITER ;
+
 -- Create stored procedure to get all purchases
 DELIMITER $$
 CREATE PROCEDURE sp_get_all_purchases()

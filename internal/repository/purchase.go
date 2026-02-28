@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -14,7 +15,10 @@ import (
 func GetAllPurchases(db *sql.DB) ([]models.Purchase, error) {
 	var purchases []models.Purchase
 
-	rows, err := db.Query("CALL sp_get_all_purchases()")
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "CALL sp_get_all_purchases()")
 	if err != nil {
 		logger.Log.Errorw("Failed to call stored procedure sp_get_all_purchases", "error", err)
 		return nil, fmt.Errorf("getAllPurchases: %v", err)
@@ -42,7 +46,10 @@ func GetAllPurchases(db *sql.DB) ([]models.Purchase, error) {
 func GetPurchasesByUserID(db *sql.DB, userID int64) ([]models.Purchase, error) {
 	var purchases []models.Purchase
 
-	rows, err := db.Query("CALL sp_get_purchases_by_user_id(?)", userID)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "CALL sp_get_purchases_by_user_id(?)", userID)
 	if err != nil {
 		logger.Log.Errorw("Failed to call stored procedure sp_get_purchases_by_user_id", "user_id", userID, "error", err)
 		return nil, fmt.Errorf("getPurchasesByUserID %d: %v", userID, err)
@@ -71,8 +78,11 @@ func GetPurchasesByUserID(db *sql.DB, userID int64) ([]models.Purchase, error) {
 func AddPurchase(db *sql.DB, p models.Purchase) (int64, error) {
 	logger.Log.Debugw("Starting purchase through stored procedure", "user_id", p.UserID, "album_id", p.AlbumID, "quantity", p.Quantity)
 
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	var purchaseID int64
-	err := db.QueryRow("CALL sp_add_purchase(?, ?, ?)", p.UserID, p.AlbumID, p.Quantity).Scan(&purchaseID)
+	err := db.QueryRowContext(ctx, "CALL sp_add_purchase(?, ?, ?)", p.UserID, p.AlbumID, p.Quantity).Scan(&purchaseID)
 	if err != nil {
 		logger.Log.Errorw("Failed to call stored procedure sp_add_purchase", "error", err, "user_id", p.UserID, "album_id", p.AlbumID)
 		return 0, fmt.Errorf("addPurchase: %v", err)
@@ -87,8 +97,11 @@ func AddPurchase(db *sql.DB, p models.Purchase) (int64, error) {
 func GetUserPurchaseSummary(db *sql.DB, userID int64) (models.UserPurchaseSummary, error) {
 	summary := models.UserPurchaseSummary{}
 
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	// Call stored procedure to get user info and purchases
-	rows, err := db.Query("CALL sp_get_user_purchase_summary(?)", userID)
+	rows, err := db.QueryContext(ctx, "CALL sp_get_user_purchase_summary(?)", userID)
 	if err != nil {
 		logger.Log.Errorw("Failed to call stored procedure sp_get_user_purchase_summary", "user_id", userID, "error", err)
 		return summary, fmt.Errorf("getUserPurchaseSummary %d: %v", userID, err)
@@ -131,8 +144,11 @@ func GetUserPurchaseSummary(db *sql.DB, userID int64) (models.UserPurchaseSummar
 func GetAllUsersPurchaseSummary(db *sql.DB) ([]models.UserPurchaseSummary, error) {
 	var summaries []models.UserPurchaseSummary
 
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	// Call stored procedure to get all users purchase summaries
-	rows, err := db.Query("CALL sp_get_all_users_purchase_summary()")
+	rows, err := db.QueryContext(ctx, "CALL sp_get_all_users_purchase_summary()")
 	if err != nil {
 		logger.Log.Errorw("Failed to call stored procedure sp_get_all_users_purchase_summary", "error", err)
 		return nil, fmt.Errorf("getAllUsersPurchaseSummary: %v", err)

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -10,13 +11,16 @@ import (
 
 // User database operations
 
-// GetAllUsers queries for all users in the database
+// GetAllUsers calls stored procedure to get all users in the database
 func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	var users []models.User
 
-	rows, err := db.Query("SELECT id, username, email FROM user")
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "CALL sp_get_all_users()")
 	if err != nil {
-		logger.Log.Errorw("Failed to query users", "error", err)
+		logger.Log.Errorw("Failed to call stored procedure sp_get_all_users", "error", err)
 		return nil, fmt.Errorf("getAllUsers: %v", err)
 	}
 	defer rows.Close()
@@ -38,11 +42,14 @@ func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	return users, nil
 }
 
-// GetUserByID queries for the user with the specified ID
+// GetUserByID calls stored procedure to get a user with the specified ID
 func GetUserByID(db *sql.DB, id int64) (models.User, error) {
 	var user models.User
 
-	row := db.QueryRow("SELECT id, username, email FROM user WHERE id = ?", id)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	row := db.QueryRowContext(ctx, "CALL sp_get_user_by_id(?)", id)
 	if err := row.Scan(&user.ID, &user.Username, &user.Email); err != nil {
 		logger.Log.Errorw("User not found", "user_id", id, "error", err)
 		return user, fmt.Errorf("getUserByID %d: %v", id, err)
@@ -51,23 +58,21 @@ func GetUserByID(db *sql.DB, id int64) (models.User, error) {
 	return user, nil
 }
 
-// AddUser adds the specified user to the database,
+// AddUser calls stored procedure to add a user to the database,
 // returning the user ID of the new entry
 func AddUser(db *sql.DB, user models.User) (int64, error) {
 	logger.Log.Infow("Adding new user", "username", user.Username, "email", user.Email)
 
-	result, err := db.Exec("INSERT INTO user (username, email) VALUES (?, ?)", user.Username, user.Email)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	var userID int64
+	err := db.QueryRowContext(ctx, "CALL sp_add_user(?, ?)", user.Username, user.Email).Scan(&userID)
 	if err != nil {
-		logger.Log.Errorw("Failed to insert user", "error", err, "username", user.Username)
+		logger.Log.Errorw("Failed to call stored procedure sp_add_user", "error", err, "username", user.Username)
 		return 0, fmt.Errorf("addUser: %v", err)
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		logger.Log.Errorw("Failed to get user ID", "error", err)
-		return 0, fmt.Errorf("addUser: %v", err)
-	}
-
-	logger.Log.Infow("User created", "user_id", id, "username", user.Username)
-	return id, nil
+	logger.Log.Infow("User created", "user_id", userID, "username", user.Username)
+	return userID, nil
 }
