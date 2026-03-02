@@ -1,5 +1,12 @@
 package constants
 
+import "time"
+
+// Database Configuration
+const (
+	DBTimeout = 5 * time.Second
+)
+
 // WebSocket Actions
 const (
 	// Album Actions

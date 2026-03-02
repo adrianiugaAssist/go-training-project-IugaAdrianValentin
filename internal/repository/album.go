@@ -4,13 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
+	"example/data-access/internal/constants"
 	"example/data-access/internal/logger"
 	"example/data-access/internal/models"
 )
-
-const dbTimeout = 5 * time.Second
 
 // Album database operations
 
@@ -18,7 +16,7 @@ const dbTimeout = 5 * time.Second
 func GetAllAlbums(db *sql.DB) ([]models.Album, error) {
 	var albums []models.Album
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	rows, err := db.QueryContext(ctx, "CALL sp_get_all_albums()")
@@ -51,7 +49,7 @@ func GetAllAlbums(db *sql.DB) ([]models.Album, error) {
 func GetAlbumsByArtist(db *sql.DB, name string) ([]models.Album, error) {
 	var albums []models.Album
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	rows, err := db.QueryContext(ctx, "CALL sp_get_albums_by_artist(?)", name)
@@ -84,7 +82,7 @@ func GetAlbumsByArtist(db *sql.DB, name string) ([]models.Album, error) {
 func GetAlbumByID(db *sql.DB, id int64) (models.Album, error) {
 	var alb models.Album
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	row := db.QueryRowContext(ctx, "CALL sp_get_album_by_id(?)", id)
@@ -103,7 +101,7 @@ func GetAlbumByID(db *sql.DB, id int64) (models.Album, error) {
 func AddAlbum(db *sql.DB, alb models.Album) (int64, error) {
 	logger.Log.Infow("Adding new album", "title", alb.Title, "artist", alb.Artist, "price", alb.Price, "stock", alb.Stock)
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	var albumID int64

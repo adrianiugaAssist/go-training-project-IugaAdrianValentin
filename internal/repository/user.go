@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"example/data-access/internal/constants"
 	"example/data-access/internal/logger"
 	"example/data-access/internal/models"
 )
@@ -15,7 +16,7 @@ import (
 func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	var users []models.User
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	rows, err := db.QueryContext(ctx, "CALL sp_get_all_users()")
@@ -46,7 +47,7 @@ func GetAllUsers(db *sql.DB) ([]models.User, error) {
 func GetUserByID(db *sql.DB, id int64) (models.User, error) {
 	var user models.User
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	row := db.QueryRowContext(ctx, "CALL sp_get_user_by_id(?)", id)
@@ -63,7 +64,7 @@ func GetUserByID(db *sql.DB, id int64) (models.User, error) {
 func AddUser(db *sql.DB, user models.User) (int64, error) {
 	logger.Log.Infow("Adding new user", "username", user.Username, "email", user.Email)
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	var userID int64

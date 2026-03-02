@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"example/data-access/internal/constants"
 	"example/data-access/internal/logger"
 	"example/data-access/internal/models"
 )
@@ -15,7 +16,7 @@ import (
 func GetAllPurchases(db *sql.DB) ([]models.Purchase, error) {
 	var purchases []models.Purchase
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	rows, err := db.QueryContext(ctx, "CALL sp_get_all_purchases()")
@@ -46,7 +47,7 @@ func GetAllPurchases(db *sql.DB) ([]models.Purchase, error) {
 func GetPurchasesByUserID(db *sql.DB, userID int64) ([]models.Purchase, error) {
 	var purchases []models.Purchase
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	rows, err := db.QueryContext(ctx, "CALL sp_get_purchases_by_user_id(?)", userID)
@@ -78,7 +79,7 @@ func GetPurchasesByUserID(db *sql.DB, userID int64) ([]models.Purchase, error) {
 func AddPurchase(db *sql.DB, p models.Purchase) (int64, error) {
 	logger.Log.Debugw("Starting purchase through stored procedure", "user_id", p.UserID, "album_id", p.AlbumID, "quantity", p.Quantity)
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	var purchaseID int64
@@ -97,7 +98,7 @@ func AddPurchase(db *sql.DB, p models.Purchase) (int64, error) {
 func GetUserPurchaseSummary(db *sql.DB, userID int64) (models.UserPurchaseSummary, error) {
 	summary := models.UserPurchaseSummary{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	// Call stored procedure to get user info and purchases
@@ -144,7 +145,7 @@ func GetUserPurchaseSummary(db *sql.DB, userID int64) (models.UserPurchaseSummar
 func GetAllUsersPurchaseSummary(db *sql.DB) ([]models.UserPurchaseSummary, error) {
 	var summaries []models.UserPurchaseSummary
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DBTimeout)
 	defer cancel()
 
 	// Call stored procedure to get all users purchase summaries
